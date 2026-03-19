@@ -460,12 +460,13 @@ function isoWeek(d) {
 function getDaysInMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
 function getFirstDayOfMonth(y, m) { return new Date(y, m, 1).getDay(); }
 
-// Shift a date forward to Monday if it falls on Sat(6) or Sun(0)
-function shiftToNextMonday(date) {
+// Shift a date forward until it lands on Mon–Fri.
+// Uses a while-loop so it handles any edge case (e.g. public holiday chains).
+function shiftToNextWeekday(date) {
   const d = new Date(date);
-  const day = d.getDay();
-  if (day === 6) d.setDate(d.getDate() + 2); // Sat → Mon
-  if (day === 0) d.setDate(d.getDate() + 1); // Sun → Mon
+  while (d.getDay() === 0 || d.getDay() === 6) {
+    d.setDate(d.getDate() + 1);
+  }
   return d;
 }
 
@@ -546,15 +547,19 @@ function getMonthReports(y, m) {
   REPORTS.forEach(r => {
     if (r.type === 'monthly') {
       const natural = new Date(y, m, Math.min(r.day, dim));
-      const shifted = shiftToNextMonday(natural);
+      const shifted = shiftToNextWeekday(natural);
       const wasShifted = shifted.toDateString() !== natural.toDateString();
       results.push({ report: r, date: shifted, shiftedFrom: wasShifted ? natural : null });
 
     } else if (r.type === 'weekly') {
       for (let day = 1; day <= dim; day++) {
-        const date = new Date(y, m, day);
-        if (date.getDay() === r.weekday) {
-          results.push({ report: r, date, shiftedFrom: null });
+        const natural = new Date(y, m, day);
+        if (natural.getDay() === r.weekday) {
+          // Weekday reports (Tue/Thu/Fri) should never fall on a weekend,
+          // but apply the guard anyway for safety.
+          const shifted = shiftToNextWeekday(natural);
+          const wasShifted = shifted.toDateString() !== natural.toDateString();
+          results.push({ report: r, date: shifted, shiftedFrom: wasShifted ? natural : null });
         }
       }
     }
