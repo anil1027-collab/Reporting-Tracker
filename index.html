@@ -426,89 +426,135 @@
 <script>
 // ─── REPORT DEFINITIONS ───────────────────────────────────────────
 const REPORTS = [
-  // Fixed monthly dates
-  { id: 'egypt_hi_1st',   name: 'Egypt HealthIndex',        type: 'monthly', day: 1,  markets: 'Egypt' },
-  { id: 'at_intermediate',name: 'Intermediate AT Report',   type: 'monthly', day: 2,  markets: 'AT' },
-  { id: 'at_finalized',   name: 'Finalized AT Report',      type: 'monthly', day: 9,  markets: 'AT' },
-  { id: 'sales_data',     name: 'Sales Data Processing',    type: 'monthly', day: 9,  orBefore: true, markets: 'All' },
-  { id: 'healthindex_all',name: 'HealthIndex – All 9 Markets', type: 'monthly', day: 12, orBefore: true, markets: '9 Markets' },
-  { id: 'reports_alin',   name: 'Reports for Alin',         type: 'monthly', day: 15, markets: 'Alin' },
-  // Weekly
-  { id: 'egypt_hi_fri',   name: 'Egypt HealthIndex',        type: 'weekly', weekday: 5, markets: 'Egypt' },
-  { id: 'wfm_weekly',     name: 'WFM Reports (10 Markets)', type: 'weekly', weekday: 2, markets: '10 Markets' },
-  { id: 'cz_sk_jo',       name: 'Detailed Report – CZ/SK/JO', type: 'weekly', weekday: 4, markets: 'Czech, Slovakia, Jordan' },
+  { id: 'egypt_hi_1st',    name: 'Egypt HealthIndex',           type: 'monthly', day: 1,  markets: 'Egypt' },
+  { id: 'at_intermediate', name: 'Intermediate AT Report',      type: 'monthly', day: 2,  markets: 'AT' },
+  { id: 'at_finalized',    name: 'Finalized AT Report',         type: 'monthly', day: 9,  markets: 'AT' },
+  { id: 'sales_data',      name: 'Sales Data Processing',       type: 'monthly', day: 9,  orBefore: true, markets: 'All' },
+  { id: 'healthindex_all', name: 'HealthIndex – All 9 Markets', type: 'monthly', day: 12, orBefore: true, markets: '9 Markets' },
+  { id: 'reports_alin',    name: 'Reports for Alin',            type: 'monthly', day: 15, markets: 'Alin' },
+  { id: 'egypt_hi_fri',    name: 'Egypt HealthIndex',           type: 'weekly',  weekday: 5, markets: 'Egypt' },
+  { id: 'wfm_weekly',      name: 'WFM Reports (10 Markets)',    type: 'weekly',  weekday: 2, markets: '10 Markets' },
+  { id: 'cz_sk_jo',        name: 'Detailed Report – CZ/SK/JO', type: 'weekly',  weekday: 4, markets: 'Czech, Slovakia, Jordan' },
 ];
 
 const STATUSES = ['Pending', 'In Progress', 'Done', 'Delayed'];
 
-// ─── STATE ────────────────────────────────────────────────────────
-// Key format: report_id:YYYY-MM-DD
-function stateKey(reportId, date) {
-  return `rpt:${reportId}:${fmt(date)}`;
-}
+// ─── GLOBAL TODAY ────────────────────────────────────────────────
+const today = new Date();
+today.setHours(0, 0, 0, 0);
 
+// ─── DATE UTILS ──────────────────────────────────────────────────
 function fmt(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+function monthKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+// ISO week number — stable across browsers
+function isoWeek(d) {
+  const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+  return `${tmp.getUTCFullYear()}-W${String(Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7)).padStart(2,'0')}`;
+}
+function getDaysInMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
+function getFirstDayOfMonth(y, m) { return new Date(y, m, 1).getDay(); }
 
-function getStatus(reportId, date) {
-  return localStorage.getItem(stateKey(reportId, date)) || 'Pending';
+// Shift a date forward to Monday if it falls on Sat(6) or Sun(0)
+function shiftToNextMonday(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  if (day === 6) d.setDate(d.getDate() + 2); // Sat → Mon
+  if (day === 0) d.setDate(d.getDate() + 1); // Sun → Mon
+  return d;
 }
 
-function setStatus(reportId, date, status) {
-  localStorage.setItem(stateKey(reportId, date), status);
+// ─── STORAGE — safe wrapper (works on GitHub Pages & file://) ─────
+// Uses a single JSON object keyed as 'reportradar_data' to avoid
+// any per-key issues with some browser security policies.
+const STORE_KEY = 'reportradar_data';
+
+function loadStore() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) { return {}; }
 }
 
-// Auto-reset weekly: if stored week != current week, treat as Pending
-function getWeekKey(d) {
-  const start = new Date(d); start.setDate(d.getDate() - d.getDay());
-  return `${start.getFullYear()}-${start.getMonth()}-${start.getDate()}`;
+function saveStore(store) {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(store));
+  } catch(e) { console.warn('ReportRadar: could not save to localStorage', e); }
 }
 
-function getStatusSmart(report, date) {
-  const raw = localStorage.getItem(stateKey(report.id, date));
-  if (!raw) return 'Pending';
-  if (report.type === 'weekly') {
-    const storedWeek = localStorage.getItem(stateKey(report.id, date) + ':week');
-    const currentWeek = getWeekKey(date);
-    if (storedWeek && storedWeek !== currentWeek) return 'Pending';
+function storeGet(key) {
+  return loadStore()[key] || null;
+}
+
+function storeSet(key, value) {
+  const store = loadStore();
+  store[key] = value;
+  saveStore(store);
+}
+
+function storeClearPrefix(prefix) {
+  const store = loadStore();
+  Object.keys(store).forEach(k => { if (k.startsWith(prefix)) delete store[k]; });
+  saveStore(store);
+}
+
+// ─── MONTHLY AUTO-RESET ───────────────────────────────────────────
+// When a new month is detected on page load, all report statuses are wiped.
+function runMonthlyReset() {
+  const current = monthKey(today);
+  const last = storeGet('meta:lastMonth');
+  if (last && last !== current) {
+    storeClearPrefix('status:');
+    console.log(`[ReportRadar] Month changed ${last} → ${current}. Statuses reset.`);
   }
-  return raw;
+  storeSet('meta:lastMonth', current);
+}
+
+// ─── STATUS GET / SET ─────────────────────────────────────────────
+function getStatusSmart(report, date) {
+  const key = `status:${report.id}:${fmt(date)}`;
+  const entry = storeGet(key);
+  if (!entry) return 'Pending';
+
+  // Weekly reports: reset if current ISO week differs from stored week
+  if (report.type === 'weekly') {
+    if (entry.week && entry.week !== isoWeek(date)) return 'Pending';
+  }
+  return entry.status || 'Pending';
 }
 
 function setStatusSmart(report, date, status) {
-  localStorage.setItem(stateKey(report.id, date), status);
-  if (report.type === 'weekly') {
-    localStorage.setItem(stateKey(report.id, date) + ':week', getWeekKey(date));
-  }
+  const key = `status:${report.id}:${fmt(date)}`;
+  const entry = { status };
+  if (report.type === 'weekly') entry.week = isoWeek(date);
+  storeSet(key, entry);
 }
 
-// ─── DATE HELPERS ─────────────────────────────────────────────────
-let viewYear, viewMonth;
-const today = new Date();
-viewYear = today.getFullYear();
-viewMonth = today.getMonth();
-
-function getDaysInMonth(y, m) { return new Date(y, m+1, 0).getDate(); }
-function getFirstDayOfMonth(y, m) { return new Date(y, m, 1).getDay(); } // 0=Sun
-
-// For a given year/month, generate all report occurrences with their date
+// ─── REPORT SCHEDULE GENERATOR ───────────────────────────────────
+// Returns all { report, date, shiftedFrom? } for a given month.
+// Monthly reports whose natural date falls on a weekend are moved
+// to next Monday; shiftedFrom records the original date for display.
 function getMonthReports(y, m) {
   const results = [];
   const dim = getDaysInMonth(y, m);
 
   REPORTS.forEach(r => {
     if (r.type === 'monthly') {
-      const d = Math.min(r.day, dim);
-      const date = new Date(y, m, d);
-      results.push({ report: r, date });
+      const natural = new Date(y, m, Math.min(r.day, dim));
+      const shifted = shiftToNextMonday(natural);
+      const wasShifted = shifted.toDateString() !== natural.toDateString();
+      results.push({ report: r, date: shifted, shiftedFrom: wasShifted ? natural : null });
+
     } else if (r.type === 'weekly') {
-      // Find all dates in the month matching the weekday (1=Mon..7=Sun, JS 0=Sun..6=Sat)
-      // weekday: 2=Tue, 4=Thu, 5=Fri in JS (0-indexed Sun)
       for (let day = 1; day <= dim; day++) {
         const date = new Date(y, m, day);
         if (date.getDay() === r.weekday) {
-          results.push({ report: r, date });
+          results.push({ report: r, date, shiftedFrom: null });
         }
       }
     }
@@ -517,36 +563,40 @@ function getMonthReports(y, m) {
   return results;
 }
 
-// Group by day
 function getReportsByDay(y, m) {
   const map = {};
-  getMonthReports(y, m).forEach(({ report, date }) => {
-    const d = date.getDate();
+  getMonthReports(y, m).forEach(item => {
+    const d = item.date.getDate();
     if (!map[d]) map[d] = [];
-    map[d].push({ report, date });
+    map[d].push(item);
   });
   return map;
 }
 
-// ─── RENDER TODAY PANEL ───────────────────────────────────────────
+// ─── NAV STATE ────────────────────────────────────────────────────
+let viewYear = today.getFullYear();
+let viewMonth = today.getMonth();
+
+// ─── RENDER: TODAY PANEL ──────────────────────────────────────────
 function renderToday() {
-  const label = document.getElementById('todayDateLabel');
+  const label     = document.getElementById('todayDateLabel');
   const container = document.getElementById('todayReports');
-  const chips = document.getElementById('summaryChips');
+  const chips     = document.getElementById('summaryChips');
 
   label.textContent = today.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  // Get today's reports
   const todayReports = getMonthReports(today.getFullYear(), today.getMonth())
     .filter(({ date }) => date.toDateString() === today.toDateString());
 
-  // Monthly summary for this month
+  // Month-wide summary counts
   const allMonth = getMonthReports(today.getFullYear(), today.getMonth());
   let cPending = 0, cInProg = 0, cDone = 0, cDelayed = 0, cOverdue = 0;
   allMonth.forEach(({ report, date }) => {
     const s = getStatusSmart(report, date);
-    if (s === 'Pending') { cPending++; if (date < today && date.toDateString() !== today.toDateString()) cOverdue++; }
-    else if (s === 'In Progress') cInProg++;
+    if (s === 'Pending') {
+      cPending++;
+      if (date < today) cOverdue++;
+    } else if (s === 'In Progress') cInProg++;
     else if (s === 'Done') cDone++;
     else if (s === 'Delayed') cDelayed++;
   });
@@ -565,40 +615,43 @@ function renderToday() {
   }
 
   container.innerHTML = '';
-  todayReports.forEach(({ report, date }) => {
+  todayReports.forEach(({ report, date, shiftedFrom }) => {
     const s = getStatusSmart(report, date);
     const card = document.createElement('div');
-    card.className = `today-report-card status-${s.replace(' ', '-')}`;
-
+    card.className = `today-report-card status-${s.replace(/ /g, '-')}`;
+    const shiftNote = shiftedFrom
+      ? ` <span style="color:var(--warn);font-size:0.65rem">(shifted from ${shiftedFrom.toLocaleDateString('en-GB',{day:'numeric',month:'short'})})</span>`
+      : '';
     card.innerHTML = `
-      <div class="report-name">${report.name}</div>
+      <div class="report-name">${report.name}${shiftNote}</div>
       <div class="report-meta">${report.markets}${report.orBefore ? ' · Due on or before' : ''}</div>
       <div class="status-row">${STATUSES.map(st =>
-        `<button class="status-btn ${s === st ? 'active' : ''}" data-status="${st}" onclick="updateStatus('${report.id}','${fmt(date)}','${st}',event)">${st}</button>`
+        `<button class="status-btn ${s === st ? 'active' : ''}" data-status="${st}"
+          onclick="updateStatus('${report.id}','${fmt(date)}','${st}')">${st}</button>`
       ).join('')}</div>
     `;
     container.appendChild(card);
   });
 }
 
-// ─── RENDER CALENDAR ─────────────────────────────────────────────
+// ─── RENDER: CALENDAR ─────────────────────────────────────────────
 function renderCalendar() {
-  const grid = document.getElementById('calendarGrid');
+  const grid  = document.getElementById('calendarGrid');
   const label = document.getElementById('monthLabel');
   grid.innerHTML = '';
 
-  label.textContent = new Date(viewYear, viewMonth, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  label.textContent = new Date(viewYear, viewMonth, 1)
+    .toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 
-  const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  DOW.forEach(d => {
+  ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => {
     const el = document.createElement('div');
     el.className = 'day-header';
     el.textContent = d;
     grid.appendChild(el);
   });
 
-  const firstDay = getFirstDayOfMonth(viewYear, viewMonth);
-  const dim = getDaysInMonth(viewYear, viewMonth);
+  const firstDay    = getFirstDayOfMonth(viewYear, viewMonth);
+  const dim         = getDaysInMonth(viewYear, viewMonth);
   const reportsByDay = getReportsByDay(viewYear, viewMonth);
 
   for (let i = 0; i < firstDay; i++) {
@@ -608,9 +661,9 @@ function renderCalendar() {
   }
 
   for (let day = 1; day <= dim; day++) {
-    const date = new Date(viewYear, viewMonth, day);
+    const date    = new Date(viewYear, viewMonth, day);
     const isToday = date.toDateString() === today.toDateString();
-    const isPast = date < today && !isToday;
+    const isPast  = date < today && !isToday;
 
     const cell = document.createElement('div');
     cell.className = `day-cell${isToday ? ' today-cell' : ''}`;
@@ -620,16 +673,15 @@ function renderCalendar() {
     numEl.textContent = day;
     cell.appendChild(numEl);
 
-    const dayReports = reportsByDay[day] || [];
-    dayReports.forEach(({ report, date: rdate }) => {
+    (reportsByDay[day] || []).forEach(({ report, date: rdate, shiftedFrom }) => {
       const s = getStatusSmart(report, rdate);
       const overdue = isPast && s === 'Pending';
       const el = document.createElement('div');
       const cls = overdue ? 'overdue-cal' : `status-${s.replace(/ /g,'.')}`;
       el.className = `cal-report ${cls}`;
-      el.textContent = report.name;
-      el.title = `${report.name} — ${s}`;
-      el.onclick = () => openPopup(report, rdate);
+      el.textContent = report.name + (shiftedFrom ? ' ↷' : '');
+      el.title = `${report.name} — ${s}${shiftedFrom ? ` (moved from ${shiftedFrom.toLocaleDateString('en-GB',{day:'numeric',month:'short'})})` : ''}`;
+      el.onclick = () => openPopup(report, rdate, shiftedFrom);
       cell.appendChild(el);
     });
 
@@ -640,20 +692,28 @@ function renderCalendar() {
 // ─── POPUP ────────────────────────────────────────────────────────
 let popupReport = null, popupDate = null;
 
-function openPopup(report, date) {
+function openPopup(report, date, shiftedFrom) {
   popupReport = report;
-  popupDate = date;
-  const s = getStatusSmart(report, date);
-  const isPast = date < today && date.toDateString() !== today.toDateString();
+  popupDate   = date;
+  const s       = getStatusSmart(report, date);
+  const isPast  = date < today;
   const overdue = isPast && s === 'Pending';
 
   document.getElementById('popupTitle').textContent = report.name;
+  const shiftNote = shiftedFrom
+    ? ` &nbsp;· <span style="color:var(--warn)">↷ moved from ${shiftedFrom.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} (weekend)</span>`
+    : '';
   document.getElementById('popupMeta').innerHTML =
-    `<strong>Markets:</strong> ${report.markets} &nbsp;·&nbsp; <strong>Date:</strong> ${date.toLocaleDateString('en-GB', {day:'numeric',month:'long',year:'numeric'})}${report.orBefore ? ' (or before)' : ''}${overdue ? ' &nbsp;· <span style="color:var(--danger)">⚠ OVERDUE</span>' : ''}`;
+    `<strong>Markets:</strong> ${report.markets} &nbsp;·&nbsp;
+     <strong>Due:</strong> ${date.toLocaleDateString('en-GB', {day:'numeric',month:'long',year:'numeric'})}
+     ${report.orBefore ? ' (or before)' : ''}
+     ${shiftNote}
+     ${overdue ? ' &nbsp;· <span style="color:var(--danger)">⚠ OVERDUE</span>' : ''}`;
 
   const row = document.getElementById('popupStatusRow');
   row.innerHTML = STATUSES.map(st =>
-    `<button class="status-btn ${s === st ? 'active' : ''}" data-status="${st}" onclick="updateStatusPopup('${st}')">${st}</button>`
+    `<button class="status-btn ${s === st ? 'active' : ''}" data-status="${st}"
+      onclick="updateStatusPopup('${st}')">${st}</button>`
   ).join('');
 
   document.getElementById('popupOverlay').classList.add('show');
@@ -662,8 +722,7 @@ function openPopup(report, date) {
 function updateStatusPopup(status) {
   if (!popupReport || !popupDate) return;
   setStatusSmart(popupReport, popupDate, status);
-  const row = document.getElementById('popupStatusRow');
-  row.querySelectorAll('.status-btn').forEach(b => {
+  document.getElementById('popupStatusRow').querySelectorAll('.status-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.status === status);
   });
   renderCalendar();
@@ -679,10 +738,10 @@ document.getElementById('popupOverlay').addEventListener('click', function(e) {
   if (e.target === this) closePopup();
 });
 
-// ─── STATUS UPDATE (today panel) ──────────────────────────────────
-function updateStatus(reportId, dateStr, status, e) {
+// ─── STATUS UPDATE (today panel buttons) ─────────────────────────
+function updateStatus(reportId, dateStr, status) {
   const [y, m, d] = dateStr.split('-').map(Number);
-  const date = new Date(y, m-1, d);
+  const date = new Date(y, m - 1, d);
   const report = REPORTS.find(r => r.id === reportId);
   setStatusSmart(report, date, status);
   renderToday();
@@ -691,11 +750,11 @@ function updateStatus(reportId, dateStr, status, e) {
 
 // ─── MONTH NAV ────────────────────────────────────────────────────
 document.getElementById('prevMonth').onclick = () => {
-  viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+  if (--viewMonth < 0) { viewMonth = 11; viewYear--; }
   renderCalendar();
 };
 document.getElementById('nextMonth').onclick = () => {
-  viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+  if (++viewMonth > 11) { viewMonth = 0; viewYear++; }
   renderCalendar();
 };
 
@@ -703,13 +762,14 @@ document.getElementById('nextMonth').onclick = () => {
 function updateClock() {
   const now = new Date();
   document.getElementById('clock').textContent =
-    now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
-    ' · ' + now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    now.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' }) +
+    ' · ' + now.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
 }
 setInterval(updateClock, 1000);
 updateClock();
 
 // ─── INIT ─────────────────────────────────────────────────────────
+runMonthlyReset();
 renderToday();
 renderCalendar();
 </script>
