@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Report Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #14171f;
+    --surface2: #1b1f2b;
+    --border: #252a38;
+    --accent: #e8c547;
+    --accent2: #4ecdc4;
+    --danger: #ff4d6d;
+    --warn: #ff9f43;
+    --muted: #4a5068;
+    --text: #e8eaf0;
+    --text2: #8890a8;
+    --done: #26c97b;
+    --inprogress: #4e9eff;
+    --pending: #8890a8;
+    --delayed: #ff4d6d;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0;
+    overflow-x: hidden;
+  }
+
+  /* HEADER */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1.3rem;
+    letter-spacing: -0.5px;
+    color: var(--accent);
+  }
+  .logo span { color: var(--text2); font-weight: 400; font-size: 0.85rem; margin-left: 10px; font-family: 'DM Mono', monospace; }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  #clock {
+    font-size: 0.78rem;
+    color: var(--text2);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    border-radius: 6px;
+  }
+
+  .month-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .month-nav button {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 32px; height: 32px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .month-nav button:hover { border-color: var(--accent); background: #1e2030; }
+
+  #monthLabel {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text);
+    min-width: 130px;
+    text-align: center;
+  }
+
+  /* MAIN LAYOUT */
+  main {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 0;
+    height: calc(100vh - 69px);
+    overflow: hidden;
+  }
+
+  /* TODAY PANEL */
+  .today-panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 24px 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .today-panel h2 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text2);
+    margin-bottom: 4px;
+  }
+
+  .today-date-label {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1.5rem;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  .today-report-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: border-color 0.2s;
+  }
+  .today-report-card:hover { border-color: #333a50; }
+  .today-report-card.overdue { border-left: 3px solid var(--danger); }
+  .today-report-card.status-done { border-left: 3px solid var(--done); }
+
+  .report-name {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text);
+    line-height: 1.3;
+  }
+
+  .report-meta {
+    font-size: 0.7rem;
+    color: var(--text2);
+  }
+
+  .status-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .status-btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+  }
+
+  .status-btn[data-status="Pending"]    { background: transparent; border-color: var(--muted); color: var(--text2); }
+  .status-btn[data-status="In Progress"]{ background: transparent; border-color: var(--inprogress); color: var(--inprogress); }
+  .status-btn[data-status="Done"]       { background: transparent; border-color: var(--done); color: var(--done); }
+  .status-btn[data-status="Delayed"]    { background: transparent; border-color: var(--danger); color: var(--danger); }
+
+  .status-btn.active[data-status="Pending"]     { background: var(--muted); color: #fff; }
+  .status-btn.active[data-status="In Progress"] { background: var(--inprogress); color: #fff; }
+  .status-btn.active[data-status="Done"]        { background: var(--done); color: #fff; }
+  .status-btn.active[data-status="Delayed"]     { background: var(--danger); color: #fff; }
+
+  .no-reports-today {
+    font-size: 0.8rem;
+    color: var(--text2);
+    text-align: center;
+    padding: 30px 0;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    line-height: 1.8;
+  }
+
+  /* SUMMARY CHIPS */
+  .summary-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .chip {
+    font-size: 0.65rem;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .chip-pending    { background: #252a38; color: var(--text2); }
+  .chip-inprogress { background: rgba(78,158,255,0.15); color: var(--inprogress); }
+  .chip-done       { background: rgba(38,201,123,0.15); color: var(--done); }
+  .chip-delayed    { background: rgba(255,77,109,0.15); color: var(--danger); }
+  .chip-overdue    { background: rgba(255,77,109,0.2); color: var(--danger); border: 1px solid var(--danger); }
+
+  /* CALENDAR */
+  .calendar-panel {
+    overflow-y: auto;
+    padding: 24px 28px;
+    background: var(--bg);
+  }
+
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+  }
+
+  .day-header {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text2);
+    text-align: center;
+    padding: 8px 0;
+  }
+
+  .day-cell {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    min-height: 110px;
+    padding: 10px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: border-color 0.2s;
+    position: relative;
+  }
+  .day-cell:hover { border-color: #2e3448; }
+  .day-cell.empty { background: transparent; border: none; }
+  .day-cell.today-cell { border-color: var(--accent); border-width: 2px; }
+  .day-cell.today-cell .day-num { color: var(--accent); }
+
+  .day-num {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--text2);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .cal-report {
+    font-size: 0.6rem;
+    padding: 3px 6px;
+    border-radius: 4px;
+    line-height: 1.3;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .cal-report:hover { opacity: 0.8; }
+
+  .cal-report.status-Pending     { background: rgba(72,80,104,0.5); color: #a0a8c0; border-left: 2px solid var(--muted); }
+  .cal-report.status-In.Progress { background: rgba(78,158,255,0.15); color: var(--inprogress); border-left: 2px solid var(--inprogress); }
+  .cal-report.status-Done        { background: rgba(38,201,123,0.15); color: var(--done); border-left: 2px solid var(--done); }
+  .cal-report.status-Delayed     { background: rgba(255,77,109,0.15); color: var(--danger); border-left: 2px solid var(--danger); }
+  .cal-report.overdue-cal        { background: rgba(255,77,109,0.2); color: var(--danger); border-left: 2px solid var(--danger); }
+
+  /* TOOLTIP / POPUP */
+  .popup-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  .popup-overlay.show { display: flex; }
+  .popup {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px;
+    width: 360px;
+    max-width: 90vw;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+  }
+  .popup h3 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .popup .pmeta { font-size: 0.72rem; color: var(--text2); margin-bottom: 18px; }
+  .popup .status-row { margin-bottom: 18px; }
+  .popup-close {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.8rem;
+    transition: border-color 0.2s;
+  }
+  .popup-close:hover { border-color: var(--accent); color: var(--text); }
+
+  /* LEGEND */
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    align-items: center;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.65rem; color: var(--text2);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px; border-radius: 2px;
+  }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
+  .section-label {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text2);
+    font-weight: 500;
+    margin-top: 8px;
+    margin-bottom: 2px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">REPORTRADAR <span>/ multi-market tracker</span></div>
+  </div>
+  <div class="header-right">
+    <div id="clock">—</div>
+    <div class="month-nav">
+      <button id="prevMonth">&#8592;</button>
+      <div id="monthLabel">—</div>
+      <button id="nextMonth">&#8594;</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- TODAY PANEL -->
+  <div class="today-panel" id="todayPanel">
+    <div>
+      <h2>Today's Reports</h2>
+      <div class="today-date-label" id="todayDateLabel">—</div>
+    </div>
+    <div class="summary-chips" id="summaryChips"></div>
+    <hr class="divider">
+    <div id="todayReports"></div>
+  </div>
+
+  <!-- CALENDAR PANEL -->
+  <div class="calendar-panel">
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--muted)"></div>Pending</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--inprogress)"></div>In Progress</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--done)"></div>Done</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--danger)"></div>Delayed / Overdue</div>
+    </div>
+    <div class="calendar-grid" id="calendarGrid"></div>
+  </div>
+</main>
+
+<!-- POPUP -->
+<div class="popup-overlay" id="popupOverlay">
+  <div class="popup">
+    <h3 id="popupTitle">—</h3>
+    <div class="pmeta" id="popupMeta">—</div>
+    <div class="status-row" id="popupStatusRow"></div>
+    <button class="popup-close" onclick="closePopup()">Close</button>
+  </div>
+</div>
+
+<script>
+// ─── REPORT DEFINITIONS ───────────────────────────────────────────
+const REPORTS = [
+  // Fixed monthly dates
+  { id: 'egypt_hi_1st',   name: 'Egypt HealthIndex',        type: 'monthly', day: 1,  markets: 'Egypt' },
+  { id: 'at_intermediate',name: 'Intermediate AT Report',   type: 'monthly', day: 2,  markets: 'AT' },
+  { id: 'at_finalized',   name: 'Finalized AT Report',      type: 'monthly', day: 9,  markets: 'AT' },
+  { id: 'sales_data',     name: 'Sales Data Processing',    type: 'monthly', day: 9,  orBefore: true, markets: 'All' },
+  { id: 'healthindex_all',name: 'HealthIndex – All 9 Markets', type: 'monthly', day: 12, orBefore: true, markets: '9 Markets' },
+  { id: 'reports_alin',   name: 'Reports for Alin',         type: 'monthly', day: 15, markets: 'Alin' },
+  // Weekly
+  { id: 'egypt_hi_fri',   name: 'Egypt HealthIndex',        type: 'weekly', weekday: 5, markets: 'Egypt' },
+  { id: 'wfm_weekly',     name: 'WFM Reports (10 Markets)', type: 'weekly', weekday: 2, markets: '10 Markets' },
+  { id: 'cz_sk_jo',       name: 'Detailed Report – CZ/SK/JO', type: 'weekly', weekday: 4, markets: 'Czech, Slovakia, Jordan' },
+];
+
+const STATUSES = ['Pending', 'In Progress', 'Done', 'Delayed'];
+
+// ─── STATE ────────────────────────────────────────────────────────
+// Key format: report_id:YYYY-MM-DD
+function stateKey(reportId, date) {
+  return `rpt:${reportId}:${fmt(date)}`;
+}
+
+function fmt(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function getStatus(reportId, date) {
+  return localStorage.getItem(stateKey(reportId, date)) || 'Pending';
+}
+
+function setStatus(reportId, date, status) {
+  localStorage.setItem(stateKey(reportId, date), status);
+}
+
+// Auto-reset weekly: if stored week != current week, treat as Pending
+function getWeekKey(d) {
+  const start = new Date(d); start.setDate(d.getDate() - d.getDay());
+  return `${start.getFullYear()}-${start.getMonth()}-${start.getDate()}`;
+}
+
+function getStatusSmart(report, date) {
+  const raw = localStorage.getItem(stateKey(report.id, date));
+  if (!raw) return 'Pending';
+  if (report.type === 'weekly') {
+    const storedWeek = localStorage.getItem(stateKey(report.id, date) + ':week');
+    const currentWeek = getWeekKey(date);
+    if (storedWeek && storedWeek !== currentWeek) return 'Pending';
+  }
+  return raw;
+}
+
+function setStatusSmart(report, date, status) {
+  localStorage.setItem(stateKey(report.id, date), status);
+  if (report.type === 'weekly') {
+    localStorage.setItem(stateKey(report.id, date) + ':week', getWeekKey(date));
+  }
+}
+
+// ─── DATE HELPERS ─────────────────────────────────────────────────
+let viewYear, viewMonth;
+const today = new Date();
+viewYear = today.getFullYear();
+viewMonth = today.getMonth();
+
+function getDaysInMonth(y, m) { return new Date(y, m+1, 0).getDate(); }
+function getFirstDayOfMonth(y, m) { return new Date(y, m, 1).getDay(); } // 0=Sun
+
+// For a given year/month, generate all report occurrences with their date
+function getMonthReports(y, m) {
+  const results = [];
+  const dim = getDaysInMonth(y, m);
+
+  REPORTS.forEach(r => {
+    if (r.type === 'monthly') {
+      const d = Math.min(r.day, dim);
+      const date = new Date(y, m, d);
+      results.push({ report: r, date });
+    } else if (r.type === 'weekly') {
+      // Find all dates in the month matching the weekday (1=Mon..7=Sun, JS 0=Sun..6=Sat)
+      // weekday: 2=Tue, 4=Thu, 5=Fri in JS (0-indexed Sun)
+      for (let day = 1; day <= dim; day++) {
+        const date = new Date(y, m, day);
+        if (date.getDay() === r.weekday) {
+          results.push({ report: r, date });
+        }
+      }
+    }
+  });
+
+  return results;
+}
+
+// Group by day
+function getReportsByDay(y, m) {
+  const map = {};
+  getMonthReports(y, m).forEach(({ report, date }) => {
+    const d = date.getDate();
+    if (!map[d]) map[d] = [];
+    map[d].push({ report, date });
+  });
+  return map;
+}
+
+// ─── RENDER TODAY PANEL ───────────────────────────────────────────
+function renderToday() {
+  const label = document.getElementById('todayDateLabel');
+  const container = document.getElementById('todayReports');
+  const chips = document.getElementById('summaryChips');
+
+  label.textContent = today.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  // Get today's reports
+  const todayReports = getMonthReports(today.getFullYear(), today.getMonth())
+    .filter(({ date }) => date.toDateString() === today.toDateString());
+
+  // Monthly summary for this month
+  const allMonth = getMonthReports(today.getFullYear(), today.getMonth());
+  let cPending = 0, cInProg = 0, cDone = 0, cDelayed = 0, cOverdue = 0;
+  allMonth.forEach(({ report, date }) => {
+    const s = getStatusSmart(report, date);
+    if (s === 'Pending') { cPending++; if (date < today && date.toDateString() !== today.toDateString()) cOverdue++; }
+    else if (s === 'In Progress') cInProg++;
+    else if (s === 'Done') cDone++;
+    else if (s === 'Delayed') cDelayed++;
+  });
+
+  chips.innerHTML = `
+    ${cOverdue ? `<div class="chip chip-overdue">⚠ ${cOverdue} Overdue</div>` : ''}
+    <div class="chip chip-pending">${cPending} Pending</div>
+    <div class="chip chip-inprogress">${cInProg} In Progress</div>
+    <div class="chip chip-done">${cDone} Done</div>
+    ${cDelayed ? `<div class="chip chip-delayed">${cDelayed} Delayed</div>` : ''}
+  `;
+
+  if (todayReports.length === 0) {
+    container.innerHTML = `<div class="no-reports-today">✓ No reports due today<br><span style="font-size:0.7rem">Check the calendar for upcoming deadlines</span></div>`;
+    return;
+  }
+
+  container.innerHTML = '';
+  todayReports.forEach(({ report, date }) => {
+    const s = getStatusSmart(report, date);
+    const card = document.createElement('div');
+    card.className = `today-report-card status-${s.replace(' ', '-')}`;
+
+    card.innerHTML = `
+      <div class="report-name">${report.name}</div>
+      <div class="report-meta">${report.markets}${report.orBefore ? ' · Due on or before' : ''}</div>
+      <div class="status-row">${STATUSES.map(st =>
+        `<button class="status-btn ${s === st ? 'active' : ''}" data-status="${st}" onclick="updateStatus('${report.id}','${fmt(date)}','${st}',event)">${st}</button>`
+      ).join('')}</div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+// ─── RENDER CALENDAR ─────────────────────────────────────────────
+function renderCalendar() {
+  const grid = document.getElementById('calendarGrid');
+  const label = document.getElementById('monthLabel');
+  grid.innerHTML = '';
+
+  label.textContent = new Date(viewYear, viewMonth, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+  const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  DOW.forEach(d => {
+    const el = document.createElement('div');
+    el.className = 'day-header';
+    el.textContent = d;
+    grid.appendChild(el);
+  });
+
+  const firstDay = getFirstDayOfMonth(viewYear, viewMonth);
+  const dim = getDaysInMonth(viewYear, viewMonth);
+  const reportsByDay = getReportsByDay(viewYear, viewMonth);
+
+  for (let i = 0; i < firstDay; i++) {
+    const el = document.createElement('div');
+    el.className = 'day-cell empty';
+    grid.appendChild(el);
+  }
+
+  for (let day = 1; day <= dim; day++) {
+    const date = new Date(viewYear, viewMonth, day);
+    const isToday = date.toDateString() === today.toDateString();
+    const isPast = date < today && !isToday;
+
+    const cell = document.createElement('div');
+    cell.className = `day-cell${isToday ? ' today-cell' : ''}`;
+
+    const numEl = document.createElement('div');
+    numEl.className = 'day-num';
+    numEl.textContent = day;
+    cell.appendChild(numEl);
+
+    const dayReports = reportsByDay[day] || [];
+    dayReports.forEach(({ report, date: rdate }) => {
+      const s = getStatusSmart(report, rdate);
+      const overdue = isPast && s === 'Pending';
+      const el = document.createElement('div');
+      const cls = overdue ? 'overdue-cal' : `status-${s.replace(/ /g,'.')}`;
+      el.className = `cal-report ${cls}`;
+      el.textContent = report.name;
+      el.title = `${report.name} — ${s}`;
+      el.onclick = () => openPopup(report, rdate);
+      cell.appendChild(el);
+    });
+
+    grid.appendChild(cell);
+  }
+}
+
+// ─── POPUP ────────────────────────────────────────────────────────
+let popupReport = null, popupDate = null;
+
+function openPopup(report, date) {
+  popupReport = report;
+  popupDate = date;
+  const s = getStatusSmart(report, date);
+  const isPast = date < today && date.toDateString() !== today.toDateString();
+  const overdue = isPast && s === 'Pending';
+
+  document.getElementById('popupTitle').textContent = report.name;
+  document.getElementById('popupMeta').innerHTML =
+    `<strong>Markets:</strong> ${report.markets} &nbsp;·&nbsp; <strong>Date:</strong> ${date.toLocaleDateString('en-GB', {day:'numeric',month:'long',year:'numeric'})}${report.orBefore ? ' (or before)' : ''}${overdue ? ' &nbsp;· <span style="color:var(--danger)">⚠ OVERDUE</span>' : ''}`;
+
+  const row = document.getElementById('popupStatusRow');
+  row.innerHTML = STATUSES.map(st =>
+    `<button class="status-btn ${s === st ? 'active' : ''}" data-status="${st}" onclick="updateStatusPopup('${st}')">${st}</button>`
+  ).join('');
+
+  document.getElementById('popupOverlay').classList.add('show');
+}
+
+function updateStatusPopup(status) {
+  if (!popupReport || !popupDate) return;
+  setStatusSmart(popupReport, popupDate, status);
+  const row = document.getElementById('popupStatusRow');
+  row.querySelectorAll('.status-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.status === status);
+  });
+  renderCalendar();
+  renderToday();
+}
+
+function closePopup() {
+  document.getElementById('popupOverlay').classList.remove('show');
+  popupReport = null; popupDate = null;
+}
+
+document.getElementById('popupOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closePopup();
+});
+
+// ─── STATUS UPDATE (today panel) ──────────────────────────────────
+function updateStatus(reportId, dateStr, status, e) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m-1, d);
+  const report = REPORTS.find(r => r.id === reportId);
+  setStatusSmart(report, date, status);
+  renderToday();
+  renderCalendar();
+}
+
+// ─── MONTH NAV ────────────────────────────────────────────────────
+document.getElementById('prevMonth').onclick = () => {
+  viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+  renderCalendar();
+};
+document.getElementById('nextMonth').onclick = () => {
+  viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+  renderCalendar();
+};
+
+// ─── CLOCK ────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
+    ' · ' + now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── INIT ─────────────────────────────────────────────────────────
+renderToday();
+renderCalendar();
+</script>
+</body>
+</html>
